@@ -20,6 +20,9 @@
 #include "main.h"
 #include "usb_host.h"
 #include "arm_math.h"
+#include "api.h"
+#include "hqc.h"
+#include <stdint.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -108,11 +111,29 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  uint32_t start_tick_keypair, end_tick_keypair, elapsed_ticks_keypair;
   while (1)
   {
     /* USER CODE END WHILE */
     MX_USB_HOST_Process();
+    unsigned char pk[PQCLEAN_HQC128_CLEAN_CRYPTO_PUBLICKEYBYTES];
+    unsigned char sk[PQCLEAN_HQC128_CLEAN_CRYPTO_SECRETKEYBYTES];
+    unsigned char ct[PQCLEAN_HQC128_CLEAN_CRYPTO_CIPHERTEXTBYTES];
+    unsigned char ss1[PQCLEAN_HQC128_CLEAN_CRYPTO_BYTES];
+    unsigned char ss2[PQCLEAN_HQC128_CLEAN_CRYPTO_BYTES];
 
+    start_tick_keypair = HAL_GetTick();
+    for(int i = 0; i < 500; i++) {
+        // Measure key pair generation time
+        PQCLEAN_HQC128_CLEAN_crypto_kem_keypair(pk, sk);
+
+        // Measure encryption time
+        PQCLEAN_HQC128_CLEAN_crypto_kem_enc(ct, ss1, pk);
+
+        // Measure decryption time
+        PQCLEAN_HQC128_CLEAN_crypto_kem_dec(ss2, ct, sk);
+    }
+    end_tick_keypair = HAL_GetTick();
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
