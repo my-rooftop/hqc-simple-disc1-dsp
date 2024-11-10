@@ -2,6 +2,7 @@
 #include "gf.h"
 #include "parameters.h"
 #include "reed_solomon.h"
+#include "profiling.h"
 #include <stdint.h>
 #include <string.h>
 /**
@@ -19,7 +20,8 @@
  * @param[out] cdw Array of size VEC_N1_SIZE_64 receiving the encoded message
  * @param[in] msg Array of size VEC_K_SIZE_64 storing the message
  */
-void PQCLEAN_HQC128_CLEAN_reed_solomon_encode(uint8_t *cdw, const uint8_t *msg) {
+void PQCLEAN_HQC128_CLEAN_reed_solomon_encode(uint8_t *cdw, const uint8_t *msg, struct Trace_time *time) {
+    uint32_t start_tick, end_tick;
     uint8_t gate_value = 0;
 
     uint16_t tmp[PARAM_G] = {0};
@@ -30,9 +32,12 @@ void PQCLEAN_HQC128_CLEAN_reed_solomon_encode(uint8_t *cdw, const uint8_t *msg) 
     for (size_t i = 0; i < PARAM_K; ++i) {
         gate_value = msg[PARAM_K - 1 - i] ^ cdw[PARAM_N1 - PARAM_K - 1];
 
+        start_tick = HAL_GetTick();
         for (size_t j = 0; j < PARAM_G; ++j) {
             tmp[j] = PQCLEAN_HQC128_CLEAN_gf_mul(gate_value, PARAM_RS_POLY[j]);
         }
+        end_tick = HAL_GetTick();
+        time->gf_mul += end_tick - start_tick;
 
         for (size_t k = PARAM_N1 - PARAM_K - 1; k; --k) {
             cdw[k] = (uint8_t)(cdw[k - 1] ^ tmp[k]);
@@ -50,13 +55,17 @@ void PQCLEAN_HQC128_CLEAN_reed_solomon_encode(uint8_t *cdw, const uint8_t *msg) 
  * @param[out] syndromes Array of size 2 * PARAM_DELTA receiving the computed syndromes
  * @param[in] cdw Array of size PARAM_N1 storing the received vector
  */
-static void compute_syndromes(uint16_t *syndromes, uint8_t *cdw) {
+static void compute_syndromes(uint16_t *syndromes, uint8_t *cdw, struct Trace_time *time) {
+    uint32_t start_tick, end_tick;
+    start_tick = HAL_GetTick();
     for (size_t i = 0; i < 2 * PARAM_DELTA; ++i) {
         for (size_t j = 1; j < PARAM_N1; ++j) {
             syndromes[i] ^= PQCLEAN_HQC128_CLEAN_gf_mul(cdw[j], alpha_ij_pow[i][j - 1]);
         }
         syndromes[i] ^= cdw[0];
     }
+    end_tick = HAL_GetTick();
+    time->gf_mul += end_tick - start_tick;
 }
 
 /**
@@ -75,7 +84,8 @@ static void compute_syndromes(uint16_t *syndromes, uint8_t *cdw) {
  * @param[out] sigma Array of size (at least) PARAM_DELTA receiving the ELP
  * @param[in] syndromes Array of size (at least) 2*PARAM_DELTA storing the syndromes
  */
-static uint16_t compute_elp(uint16_t *sigma, const uint16_t *syndromes) {
+static uint16_t compute_elp(uint16_t *sigma, const uint16_t *syndromes, struct Trace_time *time) {
+    uint32_t start_tick, end_tick;
     uint16_t deg_sigma = 0;
     uint16_t deg_sigma_p = 0;
     uint16_t deg_sigma_copy = 0;
@@ -98,11 +108,14 @@ static uint16_t compute_elp(uint16_t *sigma, const uint16_t *syndromes) {
         memcpy(sigma_copy, sigma, 2 * (PARAM_DELTA));
         deg_sigma_copy = deg_sigma;
 
+        start_tick = HAL_GetTick();
         dd = PQCLEAN_HQC128_CLEAN_gf_mul(d, PQCLEAN_HQC128_CLEAN_gf_inverse(d_p));
 
         for (i = 1; (i <= mu + 1) && (i <= PARAM_DELTA); ++i) {
             sigma[i] ^= PQCLEAN_HQC128_CLEAN_gf_mul(dd, X_sigma_p[i]);
         }
+        end_tick = HAL_GetTick();
+        time->gf_mul += end_tick - start_tick;
 
         deg_X = mu - pp;
         deg_X_sigma_p = deg_X + deg_sigma_p;
@@ -130,9 +143,12 @@ static uint16_t compute_elp(uint16_t *sigma, const uint16_t *syndromes) {
         deg_sigma_p ^= mask12 & (deg_sigma_copy ^ deg_sigma_p);
         d = syndromes[mu + 1];
 
+        start_tick = HAL_GetTick();
         for (i = 1; (i <= mu + 1) && (i <= PARAM_DELTA); ++i) {
             d ^= PQCLEAN_HQC128_CLEAN_gf_mul(sigma[i], syndromes[mu + 1 - i]);
         }
+        end_tick = HAL_GetTick();
+        time->gf_mul += end_tick - start_tick;
     }
 
     return deg_sigma;
@@ -147,10 +163,10 @@ static uint16_t compute_elp(uint16_t *sigma, const uint16_t *syndromes) {
  * @param[out] error_compact Array of PARAM_DELTA + PARAM_N1 elements receiving a compact representation of the vector error
  * @param[in] sigma Array of 2^PARAM_FFT elements storing the error locator polynomial
  */
-static void compute_roots(uint8_t *error, uint16_t *sigma) {
+static void compute_roots(uint8_t *error, uint16_t *sigma, struct Trace_time *time) {
     uint16_t w[1 << PARAM_M] = {0};
 
-    PQCLEAN_HQC128_CLEAN_fft(w, sigma, PARAM_DELTA + 1);
+    PQCLEAN_HQC128_CLEAN_fft(w, sigma, PARAM_DELTA + 1, time);
     PQCLEAN_HQC128_CLEAN_fft_retrieve_error_poly(error, w);
 }
 
@@ -164,7 +180,8 @@ static void compute_roots(uint8_t *error, uint16_t *sigma) {
  * @param[in] degree Integer that is the degree of polynomial sigma
  * @param[in] syndromes Array of 2 * PARAM_DELTA storing the syndromes
  */
-static void compute_z_poly(uint16_t *z, const uint16_t *sigma, uint16_t degree, const uint16_t *syndromes) {
+static void compute_z_poly(uint16_t *z, const uint16_t *sigma, uint16_t degree, const uint16_t *syndromes, struct Trace_time *time) {
+    uint32_t start_tick, end_tick;
     size_t i, j;
     uint16_t mask;
 
@@ -181,9 +198,12 @@ static void compute_z_poly(uint16_t *z, const uint16_t *sigma, uint16_t degree, 
         mask = -((uint16_t) (i - degree - 1) >> 15);
         z[i] ^= mask & syndromes[i - 1];
 
+        start_tick = HAL_GetTick();
         for (j = 1; j < i; ++j) {
             z[i] ^= mask & PQCLEAN_HQC128_CLEAN_gf_mul(sigma[j], syndromes[i - j - 1]);
         }
+        end_tick = HAL_GetTick();
+        time->gf_mul += end_tick - start_tick;
     }
 }
 
@@ -197,7 +217,8 @@ static void compute_z_poly(uint16_t *z, const uint16_t *sigma, uint16_t degree, 
  * @param[in] z_degree Integer that is the degree of polynomial z(x)
  * @param[in] error_compact Array of PARAM_DELTA + PARAM_N1 storing compact representation of the error
  */
-static void compute_error_values(uint16_t *error_values, const uint16_t *z, const uint8_t *error) {
+static void compute_error_values(uint16_t *error_values, const uint16_t *z, const uint8_t *error, struct Trace_time *time) {
+    uint32_t start_tick, end_tick;
     uint16_t beta_j[PARAM_DELTA] = {0};
     uint16_t e_j[PARAM_DELTA] = {0};
 
@@ -226,6 +247,7 @@ static void compute_error_values(uint16_t *error_values, const uint16_t *z, cons
     delta_real_value = delta_counter;
 
     // Compute the e_{j_i} page 31 of the documentation
+    start_tick = HAL_GetTick();
     for (size_t i = 0; i < PARAM_DELTA; ++i) {
         tmp1 = 1;
         tmp2 = 1;
@@ -242,6 +264,8 @@ static void compute_error_values(uint16_t *error_values, const uint16_t *z, cons
         mask1 = (uint16_t) (((int16_t) i - delta_real_value) >> 15); // i < delta_real_value
         e_j[i] = mask1 & PQCLEAN_HQC128_CLEAN_gf_mul(tmp1, PQCLEAN_HQC128_CLEAN_gf_inverse(tmp2));
     }
+    end_tick = HAL_GetTick();
+    time->gf_mul += end_tick - start_tick;
 
     // Place the delta e_{j_i} values at the right coordinates of the output vector
     delta_counter = 0;
@@ -287,7 +311,7 @@ static void correct_errors(uint8_t *cdw, const uint16_t *error_values) {
  * @param[out] msg Array of size VEC_K_SIZE_64 receiving the decoded message
  * @param[in] cdw Array of size VEC_N1_SIZE_64 storing the received word
  */
-void PQCLEAN_HQC128_CLEAN_reed_solomon_decode(uint8_t *msg, uint8_t *cdw) {
+void PQCLEAN_HQC128_CLEAN_reed_solomon_decode(uint8_t *msg, uint8_t *cdw, struct Trace_time *time) {
     uint16_t syndromes[2 * PARAM_DELTA] = {0};
     uint16_t sigma[1 << PARAM_FFT] = {0};
     uint8_t error[1 << PARAM_M] = {0};
@@ -296,20 +320,20 @@ void PQCLEAN_HQC128_CLEAN_reed_solomon_decode(uint8_t *msg, uint8_t *cdw) {
     uint16_t deg;
 
     // Calculate the 2*PARAM_DELTA syndromes
-    compute_syndromes(syndromes, cdw);
+    compute_syndromes(syndromes, cdw, time);
 
     // Compute the error locator polynomial sigma
     // Sigma's degree is at most PARAM_DELTA but the FFT requires the extra room
-    deg = compute_elp(sigma, syndromes);
+    deg = compute_elp(sigma, syndromes, time);
 
     // Compute the error polynomial error
-    compute_roots(error, sigma);
+    compute_roots(error, sigma, time);
 
     // Compute the polynomial z(x)
-    compute_z_poly(z, sigma, deg, syndromes);
+    compute_z_poly(z, sigma, deg, syndromes, time);
 
     // Compute the error values
-    compute_error_values(error_values, z, error);
+    compute_error_values(error_values, z, error, time);
 
     // Correct the errors
     correct_errors(cdw, error_values);

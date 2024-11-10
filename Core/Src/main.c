@@ -71,6 +71,15 @@ void MX_USB_HOST_Process(void);
 /* USER CODE BEGIN 0 */
 
 /* USER CODE END 0 */
+int compare_secret_keys(const unsigned char *ss1, const unsigned char *ss2, int length) {
+    for (int i = 0; i < length; i++) {
+        if (ss1[i] != ss2[i]) {
+            return 0;  // 배열이 다르면 0 반환
+        }
+    }
+    return 1;  // 배열이 같으면 1 반환
+}
+
 
 /**
   * @brief  The application entry point.
@@ -107,37 +116,58 @@ int main(void)
   MX_USB_HOST_Init();
   /* USER CODE BEGIN 2 */
 
-  /* USER CODE END 2 */
 
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-  uint32_t start_tick_keypair, end_tick_keypair, elapsed_ticks_keypair;
+
+
+	struct Trace_time keygen_time = {0, 0, 0, 0, 0, 0};
+	struct Trace_time encap_time = {0, 0, 0, 0, 0, 0};
+	struct Trace_time decap_time = {0, 0, 0, 0, 0, 0};
+
+  uint32_t start_tick, end_tick, total_tick;
+  uint32_t start_tick_keypair, end_tick_keypair, total_tick_keypair = 0;
+  uint32_t start_tick_enc, end_tick_enc, total_tick_enc = 0;
+  uint32_t start_tick_dec, end_tick_dec, total_tick_dec = 0;
+  //todo : time analysis 하기 전 시간 측정해서 오버헤드 어느정도인지 계산하기
   while (1)
   {
-    /* USER CODE END WHILE */
-    MX_USB_HOST_Process();
-    unsigned char pk[PQCLEAN_HQC128_CLEAN_CRYPTO_PUBLICKEYBYTES];
-    unsigned char sk[PQCLEAN_HQC128_CLEAN_CRYPTO_SECRETKEYBYTES];
-    unsigned char ct[PQCLEAN_HQC128_CLEAN_CRYPTO_CIPHERTEXTBYTES];
-    unsigned char ss1[PQCLEAN_HQC128_CLEAN_CRYPTO_BYTES];
-    unsigned char ss2[PQCLEAN_HQC128_CLEAN_CRYPTO_BYTES];
+      /* USER CODE END WHILE */
+      unsigned char pk[PQCLEAN_HQC128_CLEAN_CRYPTO_PUBLICKEYBYTES];
+      unsigned char sk[PQCLEAN_HQC128_CLEAN_CRYPTO_SECRETKEYBYTES];
+      unsigned char ct[PQCLEAN_HQC128_CLEAN_CRYPTO_CIPHERTEXTBYTES];
+      unsigned char ss1[PQCLEAN_HQC128_CLEAN_CRYPTO_BYTES];
+      unsigned char ss2[PQCLEAN_HQC128_CLEAN_CRYPTO_BYTES];
 
-    start_tick_keypair = HAL_GetTick();
-    for(int i = 0; i < 500; i++) {
-        // Measure key pair generation time
-        PQCLEAN_HQC128_CLEAN_crypto_kem_keypair(pk, sk);
+      start_tick = HAL_GetTick();
+      for(int i = 0; i < 10; i++) {
+          // Measure key pair generation time
+          start_tick_keypair = HAL_GetTick();
+          PQCLEAN_HQC128_CLEAN_crypto_kem_keypair(pk, sk, &keygen_time);
+          end_tick_keypair = HAL_GetTick();
+          total_tick_keypair += end_tick_keypair - start_tick_keypair;
 
-        // Measure encryption time
-        PQCLEAN_HQC128_CLEAN_crypto_kem_enc(ct, ss1, pk);
+          // Measure encryption time
+          start_tick_enc = HAL_GetTick();
+          PQCLEAN_HQC128_CLEAN_crypto_kem_enc(ct, ss1, pk, &encap_time);
+          end_tick_enc = HAL_GetTick();
+          total_tick_enc += end_tick_enc - start_tick_enc;
 
-        // Measure decryption time
-        PQCLEAN_HQC128_CLEAN_crypto_kem_dec(ss2, ct, sk);
-    }
-    end_tick_keypair = HAL_GetTick();
-    /* USER CODE BEGIN 3 */
+          // Measure decryption time
+          start_tick_dec = HAL_GetTick();
+          PQCLEAN_HQC128_CLEAN_crypto_kem_dec(ss2, ct, sk, &decap_time);
+          end_tick_dec = HAL_GetTick();
+          total_tick_dec += end_tick_dec - start_tick_dec;
+      }
+      end_tick = HAL_GetTick();
+      total_tick = end_tick - start_tick;
+
+
+      /* USER CODE BEGIN 3 */
   }
+
   /* USER CODE END 3 */
 }
+
+/**
 
 /**
   * @brief System Clock Configuration

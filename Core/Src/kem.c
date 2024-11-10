@@ -26,9 +26,9 @@
  * @param[out] sk String containing the secret key
  * @returns 0 if keygen is successful
  */
-int PQCLEAN_HQC128_CLEAN_crypto_kem_keypair(uint8_t *pk, uint8_t *sk) {
+int PQCLEAN_HQC128_CLEAN_crypto_kem_keypair(uint8_t *pk, uint8_t *sk, struct Trace_time *keygen_time) {
 
-    PQCLEAN_HQC128_CLEAN_hqc_pke_keygen(pk, sk);
+    PQCLEAN_HQC128_CLEAN_hqc_pke_keygen(pk, sk, keygen_time);
     return 0;
 }
 
@@ -40,8 +40,8 @@ int PQCLEAN_HQC128_CLEAN_crypto_kem_keypair(uint8_t *pk, uint8_t *sk) {
  * @param[in] pk String containing the public key
  * @returns 0 if encapsulation is successful
  */
-int PQCLEAN_HQC128_CLEAN_crypto_kem_enc(uint8_t *ct, uint8_t *ss, const uint8_t *pk) {
-
+int PQCLEAN_HQC128_CLEAN_crypto_kem_enc(uint8_t *ct, uint8_t *ss, const uint8_t *pk, struct Trace_time *encap_time) {
+    encap_time->stack += 1;
     uint8_t theta[SHAKE256_512_BYTES] = {0};
     uint64_t u[VEC_N_SIZE_64] = {0};
     uint64_t v[VEC_N1N2_SIZE_64] = {0};
@@ -60,7 +60,7 @@ int PQCLEAN_HQC128_CLEAN_crypto_kem_enc(uint8_t *ct, uint8_t *ss, const uint8_t 
     PQCLEAN_HQC128_CLEAN_shake256_512_ds(&shake256state, theta, tmp, VEC_K_SIZE_BYTES + PUBLIC_KEY_BYTES + SALT_SIZE_BYTES, G_FCT_DOMAIN);
 
     // Encrypting m
-    PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(u, v, m, theta, pk);
+    PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(u, v, m, theta, pk, encap_time);
 
     // Computing shared secret
     memcpy(mc, m, VEC_K_SIZE_BYTES);
@@ -82,8 +82,8 @@ int PQCLEAN_HQC128_CLEAN_crypto_kem_enc(uint8_t *ct, uint8_t *ss, const uint8_t 
  * @param[in] sk String containing the secret key
  * @returns 0 if decapsulation is successful, -1 otherwise
  */
-int PQCLEAN_HQC128_CLEAN_crypto_kem_dec(uint8_t *ss, const uint8_t *ct, const uint8_t *sk) {
-
+int PQCLEAN_HQC128_CLEAN_crypto_kem_dec(uint8_t *ss, const uint8_t *ct, const uint8_t *sk, struct Trace_time *decap_time) {
+    decap_time->stack += 1;
     uint8_t result;
     uint64_t u[VEC_N_SIZE_64] = {0};
     uint64_t v[VEC_N1N2_SIZE_64] = {0};
@@ -102,14 +102,14 @@ int PQCLEAN_HQC128_CLEAN_crypto_kem_dec(uint8_t *ss, const uint8_t *ct, const ui
     PQCLEAN_HQC128_CLEAN_hqc_ciphertext_from_string(u, v, salt, ct);
 
     // Decrypting
-    result = PQCLEAN_HQC128_CLEAN_hqc_pke_decrypt(m, sigma, u, v, sk);
+    result = PQCLEAN_HQC128_CLEAN_hqc_pke_decrypt(m, sigma, u, v, sk, decap_time);
 
     // Computing theta
     memcpy(tmp + VEC_K_SIZE_BYTES, pk, PUBLIC_KEY_BYTES);
     PQCLEAN_HQC128_CLEAN_shake256_512_ds(&shake256state, theta, tmp, VEC_K_SIZE_BYTES + PUBLIC_KEY_BYTES + SALT_SIZE_BYTES, G_FCT_DOMAIN);
 
     // Encrypting m'
-    PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(u2, v2, m, theta, pk);
+    PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(u2, v2, m, theta, pk, decap_time);
 
     // Check if c != c'
     result |= PQCLEAN_HQC128_CLEAN_vect_compare((uint8_t *)u, (uint8_t *)u2, VEC_N_SIZE_BYTES);

@@ -1,6 +1,7 @@
 #include "fft.h"
 #include "gf.h"
 #include "parameters.h"
+#include "profiling.h"
 #include <stdint.h>
 #include <string.h>
 /**
@@ -255,7 +256,8 @@ static void fft_rec(uint16_t *w, uint16_t *f, size_t f_coeffs, uint8_t m, uint32
  * @param[in] f Array of 2^PARAM_FFT elements
  * @param[in] f_coeffs Number coefficients of f (i.e. deg(f)+1)
  */
-void PQCLEAN_HQC128_CLEAN_fft(uint16_t *w, const uint16_t *f, size_t f_coeffs) {
+void PQCLEAN_HQC128_CLEAN_fft(uint16_t *w, const uint16_t *f, size_t f_coeffs, struct Trace_time *time) {
+    uint32_t start_tick, end_tick;
     uint16_t betas[PARAM_M - 1] = {0};
     uint16_t betas_sums[1 << (PARAM_M - 1)] = {0};
     uint16_t f0[1 << (PARAM_FFT - 1)] = {0};
@@ -299,10 +301,13 @@ void PQCLEAN_HQC128_CLEAN_fft(uint16_t *w, const uint16_t *f, size_t f_coeffs) {
     w[k] ^= u[0];
 
     // Find other roots
+    start_tick = HAL_GetTick();
     for (i = 1; i < k; ++i) {
         w[i] = u[i] ^ PQCLEAN_HQC128_CLEAN_gf_mul(betas_sums[i], v[i]);
         w[k + i] ^= w[i];
     }
+    end_tick = HAL_GetTick();
+    time->gf_mul += end_tick - start_tick;
 }
 
 /**

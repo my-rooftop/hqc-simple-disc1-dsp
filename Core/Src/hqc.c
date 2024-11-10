@@ -6,6 +6,7 @@
 #include "randombytes.h"
 #include "shake_prng.h"
 #include "vector.h"
+#include "profiling.h"
 #include <stdint.h>
 /**
  * @file hqc.c
@@ -23,7 +24,8 @@
  * @param[out] pk String containing the public key
  * @param[out] sk String containing the secret key
  */
-void PQCLEAN_HQC128_CLEAN_hqc_pke_keygen(uint8_t *pk, uint8_t *sk) {
+void PQCLEAN_HQC128_CLEAN_hqc_pke_keygen(uint8_t *pk, uint8_t *sk, struct Trace_time *keygen_time) {
+    keygen_time->stack += 1;
     seedexpander_state sk_seedexpander;
     seedexpander_state pk_seedexpander;
     uint8_t sk_seed[SEED_BYTES] = {0};
@@ -33,6 +35,7 @@ void PQCLEAN_HQC128_CLEAN_hqc_pke_keygen(uint8_t *pk, uint8_t *sk) {
     uint64_t y[VEC_N_SIZE_64] = {0};
     uint64_t h[VEC_N_SIZE_64] = {0};
     uint64_t s[VEC_N_SIZE_64] = {0};
+    uint32_t start_tick, end_tick;
 
     // Create seed_expanders for public key and secret key
     randombytes(sk_seed, SEED_BYTES);
@@ -43,13 +46,26 @@ void PQCLEAN_HQC128_CLEAN_hqc_pke_keygen(uint8_t *pk, uint8_t *sk) {
     PQCLEAN_HQC128_CLEAN_seedexpander_init(&pk_seedexpander, pk_seed, SEED_BYTES);
 
     // Compute secret key
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_set_random_fixed_weight(&sk_seedexpander, x, PARAM_OMEGA);
     PQCLEAN_HQC128_CLEAN_vect_set_random_fixed_weight(&sk_seedexpander, y, PARAM_OMEGA);
+    end_tick = HAL_GetTick();
+    keygen_time->random_fixed_weight += end_tick - start_tick;
 
     // Compute public key
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_set_random(&pk_seedexpander, h);
+    end_tick = HAL_GetTick();
+    keygen_time->vect_set_random += end_tick - start_tick;
+
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_mul(s, y, h);
+    end_tick = HAL_GetTick();
+    keygen_time->vect_mul += end_tick - start_tick;
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_add(s, x, s, VEC_N_SIZE_64);
+    end_tick = HAL_GetTick();
+    keygen_time->vect_add += end_tick - start_tick;
 
     // Parse keys to string
     PQCLEAN_HQC128_CLEAN_hqc_public_key_to_string(pk, pk_seed, s);
@@ -70,7 +86,7 @@ void PQCLEAN_HQC128_CLEAN_hqc_pke_keygen(uint8_t *pk, uint8_t *sk) {
  * @param[in] theta Seed used to derive randomness required for encryption
  * @param[in] pk String containing the public key
  */
-void PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(uint64_t *u, uint64_t *v, uint8_t *m, uint8_t *theta, const uint8_t *pk) {
+void PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(uint64_t *u, uint64_t *v, uint8_t *m, uint8_t *theta, const uint8_t *pk, struct Trace_time *encap_time) {
     seedexpander_state vec_seedexpander;
     uint64_t h[VEC_N_SIZE_64] = {0};
     uint64_t s[VEC_N_SIZE_64] = {0};
@@ -79,30 +95,53 @@ void PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(uint64_t *u, uint64_t *v, uint8_t *m, 
     uint64_t e[VEC_N_SIZE_64] = {0};
     uint64_t tmp1[VEC_N_SIZE_64] = {0};
     uint64_t tmp2[VEC_N_SIZE_64] = {0};
+    uint32_t start_tick, end_tick;
+
+
 
     // Create seed_expander from theta
     PQCLEAN_HQC128_CLEAN_seedexpander_init(&vec_seedexpander, theta, SEED_BYTES);
 
     // Retrieve h and s from public key
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_hqc_public_key_from_string(h, s, pk);
+    end_tick = HAL_GetTick();
+    encap_time->vect_set_random += end_tick - start_tick;
 
     // Generate r1, r2 and e
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_set_random_fixed_weight(&vec_seedexpander, r1, PARAM_OMEGA_R);
     PQCLEAN_HQC128_CLEAN_vect_set_random_fixed_weight(&vec_seedexpander, r2, PARAM_OMEGA_R);
     PQCLEAN_HQC128_CLEAN_vect_set_random_fixed_weight(&vec_seedexpander, e, PARAM_OMEGA_E);
+    end_tick = HAL_GetTick();
+    encap_time->random_fixed_weight += end_tick - start_tick;
 
     // Compute u = r1 + r2.h
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_mul(u, r2, h);
+    end_tick = HAL_GetTick();
+    encap_time->vect_mul += end_tick - start_tick;
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_add(u, r1, u, VEC_N_SIZE_64);
+    end_tick = HAL_GetTick();
+    encap_time->vect_add += end_tick - start_tick;
 
     // Compute v = m.G by encoding the message
-    PQCLEAN_HQC128_CLEAN_code_encode(v, m);
+    PQCLEAN_HQC128_CLEAN_code_encode(v, m, encap_time);
     PQCLEAN_HQC128_CLEAN_vect_resize(tmp1, PARAM_N, v, PARAM_N1N2);
 
     // Compute v = m.G + s.r2 + e
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_mul(tmp2, r2, s);
+    end_tick = HAL_GetTick();
+    encap_time->vect_mul += end_tick - start_tick;
+
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_add(tmp2, e, tmp2, VEC_N_SIZE_64);
     PQCLEAN_HQC128_CLEAN_vect_add(tmp2, tmp1, tmp2, VEC_N_SIZE_64);
+    end_tick = HAL_GetTick();
+    encap_time->vect_add += end_tick - start_tick;
+    
     PQCLEAN_HQC128_CLEAN_vect_resize(v, PARAM_N1N2, tmp2, PARAM_N);
 
     PQCLEAN_HQC128_CLEAN_seedexpander_release(&vec_seedexpander);
@@ -117,23 +156,33 @@ void PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(uint64_t *u, uint64_t *v, uint8_t *m, 
  * @param[in] sk String containing the secret key
  * @returns 0
  */
-uint8_t PQCLEAN_HQC128_CLEAN_hqc_pke_decrypt(uint8_t *m, uint8_t *sigma, const uint64_t *u, const uint64_t *v, const uint8_t *sk) {
+uint8_t PQCLEAN_HQC128_CLEAN_hqc_pke_decrypt(uint8_t *m, uint8_t *sigma, const uint64_t *u, const uint64_t *v, const uint8_t *sk, struct Trace_time *decap_time) {
     uint64_t x[VEC_N_SIZE_64] = {0};
     uint64_t y[VEC_N_SIZE_64] = {0};
     uint8_t pk[PUBLIC_KEY_BYTES] = {0};
     uint64_t tmp1[VEC_N_SIZE_64] = {0};
     uint64_t tmp2[VEC_N_SIZE_64] = {0};
+    uint32_t start_tick, end_tick;
 
     // Retrieve x, y, pk from secret key
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_hqc_secret_key_from_string(x, y, sigma, pk, sk);
+    end_tick = HAL_GetTick();
+    decap_time->random_fixed_weight += end_tick - start_tick;
 
     // Compute v - u.y
     PQCLEAN_HQC128_CLEAN_vect_resize(tmp1, PARAM_N, v, PARAM_N1N2);
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_mul(tmp2, y, u);
+    end_tick = HAL_GetTick();
+    decap_time->vect_mul += end_tick - start_tick;
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_add(tmp2, tmp1, tmp2, VEC_N_SIZE_64);
+    end_tick = HAL_GetTick();
+    decap_time->vect_add += end_tick - start_tick;
 
     // Compute m by decoding v - u.y
-    PQCLEAN_HQC128_CLEAN_code_decode(m, tmp2);
+    PQCLEAN_HQC128_CLEAN_code_decode(m, tmp2, decap_time);
 
     return 0;
 }
