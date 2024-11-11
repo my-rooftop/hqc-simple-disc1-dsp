@@ -119,9 +119,9 @@ int main(void)
 
 
 
-	struct Trace_time keygen_time = {0, 0, 0, 0, 0, 0};
-	struct Trace_time encap_time = {0, 0, 0, 0, 0, 0};
-	struct Trace_time decap_time = {0, 0, 0, 0, 0, 0};
+	struct Trace_time keygen_time = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	struct Trace_time encap_time = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+	struct Trace_time decap_time = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
   uint32_t start_tick, end_tick, total_tick;
   uint32_t start_tick_keypair, end_tick_keypair, total_tick_keypair = 0;
@@ -138,7 +138,7 @@ int main(void)
       unsigned char ss2[PQCLEAN_HQC128_CLEAN_CRYPTO_BYTES];
 
       start_tick = HAL_GetTick();
-      for(int i = 0; i < 10; i++) {
+      for(int i = 0; i < 100; i++) {
           // Measure key pair generation time
           start_tick_keypair = HAL_GetTick();
           PQCLEAN_HQC128_CLEAN_crypto_kem_keypair(pk, sk, &keygen_time);

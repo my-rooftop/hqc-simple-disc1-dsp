@@ -62,6 +62,7 @@ void PQCLEAN_HQC128_CLEAN_hqc_pke_keygen(uint8_t *pk, uint8_t *sk, struct Trace_
     PQCLEAN_HQC128_CLEAN_vect_mul(s, y, h);
     end_tick = HAL_GetTick();
     keygen_time->vect_mul += end_tick - start_tick;
+    keygen_time->vect_mul_stack += 1;
     start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_add(s, x, s, VEC_N_SIZE_64);
     end_tick = HAL_GetTick();
@@ -121,6 +122,8 @@ void PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(uint64_t *u, uint64_t *v, uint8_t *m, 
     PQCLEAN_HQC128_CLEAN_vect_mul(u, r2, h);
     end_tick = HAL_GetTick();
     encap_time->vect_mul += end_tick - start_tick;
+    encap_time->vect_mul_stack += 1;
+
     start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_add(u, r1, u, VEC_N_SIZE_64);
     end_tick = HAL_GetTick();
@@ -135,6 +138,7 @@ void PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(uint64_t *u, uint64_t *v, uint8_t *m, 
     PQCLEAN_HQC128_CLEAN_vect_mul(tmp2, r2, s);
     end_tick = HAL_GetTick();
     encap_time->vect_mul += end_tick - start_tick;
+    encap_time->vect_mul_stack += 1;
 
     start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_add(tmp2, e, tmp2, VEC_N_SIZE_64);
@@ -176,6 +180,8 @@ uint8_t PQCLEAN_HQC128_CLEAN_hqc_pke_decrypt(uint8_t *m, uint8_t *sigma, const u
     PQCLEAN_HQC128_CLEAN_vect_mul(tmp2, y, u);
     end_tick = HAL_GetTick();
     decap_time->vect_mul += end_tick - start_tick;
+    decap_time->vect_mul_stack += 1;
+    
     start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_vect_add(tmp2, tmp1, tmp2, VEC_N_SIZE_64);
     end_tick = HAL_GetTick();

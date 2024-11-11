@@ -50,14 +50,17 @@ int PQCLEAN_HQC128_CLEAN_crypto_kem_enc(uint8_t *ct, uint8_t *ss, const uint8_t 
     uint8_t *m = tmp;
     uint8_t *salt = tmp + VEC_K_SIZE_BYTES + PUBLIC_KEY_BYTES;
     shake256incctx shake256state;
-
+    uint32_t start_tick, end_tick;
     // Computing m
     randombytes(m, VEC_K_SIZE_BYTES);
 
     // Computing theta
     randombytes(salt, SALT_SIZE_BYTES);
     memcpy(tmp + VEC_K_SIZE_BYTES, pk, PUBLIC_KEY_BYTES);
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_shake256_512_ds(&shake256state, theta, tmp, VEC_K_SIZE_BYTES + PUBLIC_KEY_BYTES + SALT_SIZE_BYTES, G_FCT_DOMAIN);
+    end_tick = HAL_GetTick();
+    encap_time->shake256_512 += end_tick - start_tick;
 
     // Encrypting m
     PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(u, v, m, theta, pk, encap_time);
@@ -66,7 +69,10 @@ int PQCLEAN_HQC128_CLEAN_crypto_kem_enc(uint8_t *ct, uint8_t *ss, const uint8_t 
     memcpy(mc, m, VEC_K_SIZE_BYTES);
     PQCLEAN_HQC128_CLEAN_store8_arr(mc + VEC_K_SIZE_BYTES, VEC_N_SIZE_BYTES, u, VEC_N_SIZE_64);
     PQCLEAN_HQC128_CLEAN_store8_arr(mc + VEC_K_SIZE_BYTES + VEC_N_SIZE_BYTES, VEC_N1N2_SIZE_BYTES, v, VEC_N1N2_SIZE_64);
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_shake256_512_ds(&shake256state, ss, mc, VEC_K_SIZE_BYTES + VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES, K_FCT_DOMAIN);
+    end_tick = HAL_GetTick();
+    encap_time->shake256_512 += end_tick - start_tick;
 
     // Computing ciphertext
     PQCLEAN_HQC128_CLEAN_hqc_ciphertext_to_string(ct, u, v, salt);
@@ -97,7 +103,7 @@ int PQCLEAN_HQC128_CLEAN_crypto_kem_dec(uint8_t *ss, const uint8_t *ct, const ui
     uint8_t *m = tmp;
     uint8_t *salt = tmp + VEC_K_SIZE_BYTES + PUBLIC_KEY_BYTES;
     shake256incctx shake256state;
-
+    uint32_t start_tick, end_tick;
     // Retrieving u, v and d from ciphertext
     PQCLEAN_HQC128_CLEAN_hqc_ciphertext_from_string(u, v, salt, ct);
 
@@ -106,7 +112,10 @@ int PQCLEAN_HQC128_CLEAN_crypto_kem_dec(uint8_t *ss, const uint8_t *ct, const ui
 
     // Computing theta
     memcpy(tmp + VEC_K_SIZE_BYTES, pk, PUBLIC_KEY_BYTES);
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_shake256_512_ds(&shake256state, theta, tmp, VEC_K_SIZE_BYTES + PUBLIC_KEY_BYTES + SALT_SIZE_BYTES, G_FCT_DOMAIN);
+    end_tick = HAL_GetTick();
+    decap_time->shake256_512 += end_tick - start_tick;
 
     // Encrypting m'
     PQCLEAN_HQC128_CLEAN_hqc_pke_encrypt(u2, v2, m, theta, pk, decap_time);
@@ -124,7 +133,10 @@ int PQCLEAN_HQC128_CLEAN_crypto_kem_dec(uint8_t *ss, const uint8_t *ct, const ui
     // Computing shared secret
     PQCLEAN_HQC128_CLEAN_store8_arr(mc + VEC_K_SIZE_BYTES, VEC_N_SIZE_BYTES, u, VEC_N_SIZE_64);
     PQCLEAN_HQC128_CLEAN_store8_arr(mc + VEC_K_SIZE_BYTES + VEC_N_SIZE_BYTES, VEC_N1N2_SIZE_BYTES, v, VEC_N1N2_SIZE_64);
+    start_tick = HAL_GetTick();
     PQCLEAN_HQC128_CLEAN_shake256_512_ds(&shake256state, ss, mc, VEC_K_SIZE_BYTES + VEC_N_SIZE_BYTES + VEC_N1N2_SIZE_BYTES, K_FCT_DOMAIN);
+    end_tick = HAL_GetTick();
+    decap_time->shake256_512 += end_tick - start_tick;
 
     return -(~result & 1);
 }
